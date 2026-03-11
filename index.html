@@ -1083,21 +1083,7 @@ select.finput {
 
   <div id="budget-dep-list" style="background:var(--bg2);border-radius:14px;border:1px solid var(--line2)"><div style="padding:14px;color:var(--t3);font-size:12px">Aucune dépense ce cycle</div></div>
 
-  <!-- Bandeau totaux fixe -->
-  <div id="budget-totaux" style="display:none;grid-template-columns:1fr 1fr 1fr;gap:6px;background:var(--bg2);border-radius:14px;border:1px solid var(--line2);padding:12px 14px;text-align:center">
-    <div>
-      <div style="font-size:9px;color:var(--t3);font-weight:700;text-transform:uppercase;margin-bottom:3px">👤 Moi</div>
-      <div class="btot-val" style="font-size:17px;font-weight:800;color:var(--t1)">0€</div>
-    </div>
-    <div>
-      <div style="font-size:9px;color:var(--t3);font-weight:700;text-transform:uppercase;margin-bottom:3px">👧 Chloé</div>
-      <div class="btot-val" style="font-size:17px;font-weight:800;color:var(--chloe)">0€</div>
-    </div>
-    <div>
-      <div style="font-size:9px;color:var(--t3);font-weight:700;text-transform:uppercase;margin-bottom:3px">👦 Timothé</div>
-      <div class="btot-val" style="font-size:17px;font-weight:800;color:var(--timo)">0€</div>
-    </div>
-  </div>
+
 
   <!-- ── HISTORIQUE CYCLES ── -->
   <div class="slbl">Historique cycles</div>
@@ -2401,17 +2387,16 @@ function renderBudget() {
   listEl.innerHTML = deps.length ? deps.sort((a,b)=>b.date.localeCompare(a.date)).map(d=>renderBdepItem(d)).join('')
     : '<div style="padding:14px;color:var(--t3);font-size:12px">Aucune dépense ce cycle</div>';
 
-  // Bandeau total dépenses variables — mise à jour du div fixe
-  const totalMoiAff  = depsCycle.filter(d=>!d.pour||d.pour==='moi').reduce((s,d)=>s+parseFloat(d.montant),0);
-  const totalChloeAff= depsCycle.filter(d=>d.pour==='Chloé').reduce((s,d)=>s+parseFloat(d.montant),0);
-  const totalTimoAff = depsCycle.filter(d=>d.pour==='Timothé').reduce((s,d)=>s+parseFloat(d.montant),0);
-  const bandeauFixed = document.getElementById('budget-totaux');
-  if (bandeauFixed) {
-    bandeauFixed.style.display = depsCycle.length > 0 ? 'grid' : 'none';
-    const el = bandeauFixed.querySelectorAll('.btot-val');
-    if (el[0]) el[0].textContent = totalMoiAff.toFixed(0)+'€';
-    if (el[1]) el[1].textContent = totalChloeAff.toFixed(0)+'€';
-    if (el[2]) el[2].textContent = totalTimoAff.toFixed(0)+'€';
+  // Bandeau totaux — ajouté UNE SEULE FOIS à la fin du innerHTML
+  if (depsCycle.length > 0) {
+    const tMoi   = depsCycle.filter(d=>!d.pour||d.pour==='moi').reduce((s,d)=>s+parseFloat(d.montant),0);
+    const tChloe = depsCycle.filter(d=>d.pour==='Chloé').reduce((s,d)=>s+parseFloat(d.montant),0);
+    const tTimo  = depsCycle.filter(d=>d.pour==='Timothé').reduce((s,d)=>s+parseFloat(d.montant),0);
+    listEl.innerHTML += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;border-top:2px solid var(--line3);background:var(--bg3)">'
+      + '<div style="padding:10px 4px;text-align:center;background:var(--bg2)"><div style="font-size:9px;color:var(--t3);font-weight:700;text-transform:uppercase;margin-bottom:2px">&#128100; Moi</div><div style="font-size:16px;font-weight:800;color:var(--t1)">'+tMoi.toFixed(0)+'€</div></div>'
+      + '<div style="padding:10px 4px;text-align:center;background:var(--bg2)"><div style="font-size:9px;color:var(--t3);font-weight:700;text-transform:uppercase;margin-bottom:2px">&#128103; Chloé</div><div style="font-size:16px;font-weight:800;color:var(--chloe)">'+tChloe.toFixed(0)+'€</div></div>'
+      + '<div style="padding:10px 4px;text-align:center;background:var(--bg2)"><div style="font-size:9px;color:var(--t3);font-weight:700;text-transform:uppercase;margin-bottom:2px">&#128102; Timothé</div><div style="font-size:16px;font-weight:800;color:var(--timo)">'+tTimo.toFixed(0)+'€</div></div>'
+      + '</div>';
   }
 
   // Historique cycles
