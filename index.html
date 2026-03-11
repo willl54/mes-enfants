@@ -1968,40 +1968,87 @@ async function importExcel(event) {
     wb.SheetNames.forEach(name => {
       let child = null;
       const ln = name.toLowerCase();
-      if (ln.includes('chlo') || ln.includes('chloe')) child = 'chloe';
-      if (ln.includes('timo') || ln.includes('timothe')) child = 'timo';
+      if (ln.includes('chlo')) child = 'chloe';
+      else if (ln.includes('timo')) child = 'timo';
       if (!child) return;
 
-      const data = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: '' });
-      data.forEach(row => {
-        let date = null;
-        for (const k of Object.keys(row)) {
-          if (k.toLowerCase().includes('date') && row[k]) {
-            const v = row[k];
-            if (v instanceof Date) date = v.toISOString().slice(0,10);
-            else { const d = new Date(v); if (!isNaN(d)) date = d.toISOString().slice(0,10); }
+      // Get raw array of arrays to handle merged header rows
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '', cellDates: true });
+
+      // Find the header row (the one containing "Date" as a cell value)
+      let headerIdx = -1;
+      let colMap = {};
+      for (let i = 0; i < Math.min(rows.length, 10); i++) {
+        const row = rows[i];
+        if (!row) continue;
+        for (let c = 0; c < row.length; c++) {
+          const val = String(row[c] || '').toLowerCase().trim();
+          if (val === 'date') {
+            headerIdx = i;
+            for (let cc = 0; cc < row.length; cc++) {
+              const h = String(row[cc] || '').toLowerCase().trim();
+              if (h === 'date') colMap.date = cc;
+              else if (h.includes('but') || h.includes('début') || h === 'debut') colMap.debut = cc;
+              else if (h === 'fin') colMap.fin = cc;
+              else if (h.includes('midi')) colMap.midi = cc;
+              else if (h.includes('soir')) colMap.soir = cc;
+              else if (h.includes('note')) colMap.notes = cc;
+            }
+            break;
           }
         }
-        if (!date) return;
-        if (DB.gardes.find(g => g.date === date && g.child === child)) return;
+        if (headerIdx >= 0) break;
+      }
 
-        const getVal = (...keys) => {
-          for (const k of Object.keys(row)) {
-            for (const kk of keys) { if (k.toLowerCase().includes(kk) && row[k]) return String(row[k]); }
+      if (headerIdx < 0) return;
+
+      // Parse data rows after header
+      for (let i = headerIdx + 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row) continue;
+
+        // Parse date
+        let date = null;
+        const rawDate = colMap.date !== undefined ? row[colMap.date] : null;
+        if (rawDate instanceof Date && !isNaN(rawDate)) {
+          date = rawDate.toISOString().slice(0, 10);
+        } else if (rawDate) {
+          const d = new Date(rawDate);
+          if (!isNaN(d)) date = d.toISOString().slice(0, 10);
+        }
+        if (!date) continue;
+
+        // Skip duplicates
+        if (DB.gardes.find(g => g.date === date && g.child === child)) continue;
+
+        // Parse time values (handles Date objects, strings, Excel decimals)
+        const fmtTime = (v) => {
+          if (!v && v !== 0) return '';
+          if (v instanceof Date) {
+            return String(v.getHours()).padStart(2,'0') + ':' + String(v.getMinutes()).padStart(2,'0');
           }
-          return '';
+          const s = String(v).trim();
+          if (/^\d{1,2}:\d{2}/.test(s)) return s.slice(0,5);
+          const n = parseFloat(s);
+          if (!isNaN(n) && n >= 0 && n <= 1) {
+            const mins = Math.round(n * 24 * 60);
+            return String(Math.floor(mins/60)).padStart(2,'0') + ':' + String(mins%60).padStart(2,'0');
+          }
+          return s;
         };
 
-        DB.gardes.push({
-          id: uid(), child, date,
-          debut: getVal('debut','heure d'),
-          fin: getVal('fin','heure f'),
-          midi: getVal('midi'),
-          soir: getVal('soir'),
-          notes: getVal('notes','note')
-        });
+        const debut = colMap.debut !== undefined ? fmtTime(row[colMap.debut]) : '';
+        const fin = colMap.fin !== undefined ? fmtTime(row[colMap.fin]) : '';
+        const midi = colMap.midi !== undefined ? String(row[colMap.midi] || '').trim() : '';
+        const soir = colMap.soir !== undefined ? String(row[colMap.soir] || '').trim() : '';
+        const notes = colMap.notes !== undefined ? String(row[colMap.notes] || '').trim() : '';
+
+        // Skip empty rows
+        if (!debut && !fin && !midi && !soir) continue;
+
+        DB.gardes.push({ id: uid(), child, date, debut, fin, midi, soir, notes });
         imported++;
-      });
+      }
     });
 
     save();
