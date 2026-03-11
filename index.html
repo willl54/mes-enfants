@@ -434,33 +434,28 @@ nav button svg { width: 22px; height: 22px; }
 
   <!-- PAGE: BILAN -->
   <div class="page" id="pg-bilan">
-    <div style="font-size:14px;font-weight:700;margin-bottom:12px">📊 Bilan</div>
-
-    <!-- Garde rings -->
-    <div class="card" id="bilan-garde"></div>
-
-    <!-- Repas tiles -->
-    <div class="card">
-      <div class="card-title">🍽️ Repas chez Papa</div>
-      <div class="repas-tiles" id="bilan-repas"></div>
+    <!-- Month selector -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <span style="font-size:14px;font-weight:700">📊 Bilan</span>
+      <div style="display:flex;gap:4px;align-items:center">
+        <button class="btn btn-sm btn-outline" onclick="bilanNav(-1)">◀</button>
+        <span id="bilan-month-label" style="font-size:13px;font-weight:600;min-width:90px;text-align:center"></span>
+        <button class="btn btn-sm btn-outline" onclick="bilanNav(1)">▶</button>
+        <button class="btn btn-sm" id="bilan-mode-btn" style="background:var(--accent);margin-left:6px" onclick="toggleBilanMode()">Mois</button>
+      </div>
     </div>
 
-    <!-- Cantine -->
-    <div class="card">
-      <div class="card-title">🏫 Cantine</div>
-      <div class="repas-tiles" id="bilan-cantine"></div>
-    </div>
+    <!-- Stats container -->
+    <div id="bilan-content"></div>
 
-    <!-- Dépenses enfants total -->
-    <div class="card">
-      <div class="card-title">💶 Dépenses enfants</div>
-      <div id="bilan-dep"></div>
-    </div>
-
-    <!-- PDF Buttons -->
-    <div style="display:flex;gap:8px;margin-top:4px">
-      <button class="btn btn-primary btn-full" onclick="exportPdfMensuel()">📄 Rapport mensuel</button>
-      <button class="btn btn-outline btn-full" onclick="exportPdfAnnuel()">📄 Rapport annuel</button>
+    <!-- RAZ + Export -->
+    <div class="card" style="margin-top:8px">
+      <div class="card-title">📄 Export & gestion</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-sm btn-primary" onclick="exportPdfBilan()">📄 Export PDF</button>
+        <button class="btn btn-sm btn-outline" onclick="exportPdfAnnuel()">📊 Rapport annuel</button>
+        <button class="btn btn-sm btn-outline" style="color:var(--danger)" onclick="razMois()">🗑️ RAZ mois</button>
+      </div>
     </div>
   </div>
 
@@ -1330,105 +1325,239 @@ function calDayClick(dateStr) {
 }
 
 // ===== BILAN =====
-function renderBilan() {
-  const gardeEl = document.getElementById('bilan-garde');
-  let html = '<div class="card-title">\u2696\ufe0f Répartition des jours de garde</div>';
+// ===== BILAN =====
+let bilanMonth = new Date().getMonth();
+let bilanYear = new Date().getFullYear();
+let bilanMode = 'month'; // 'month' or 'year'
+const MONTHS_FR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
+function bilanNav(dir) {
+  if (bilanMode === 'year') { bilanYear += dir; }
+  else {
+    bilanMonth += dir;
+    if (bilanMonth > 11) { bilanMonth = 0; bilanYear++; }
+    if (bilanMonth < 0) { bilanMonth = 11; bilanYear--; }
+  }
+  renderBilan();
+}
+
+function toggleBilanMode() {
+  bilanMode = bilanMode === 'month' ? 'year' : 'month';
+  document.getElementById('bilan-mode-btn').textContent = bilanMode === 'month' ? 'Mois' : 'Année';
+  renderBilan();
+}
+
+function getStats(gardes, deps) {
+  const stats = {};
   ['chloe','timo'].forEach(child => {
-    const gs = DB.gardes.filter(g => g.child === child);
-    // Count DAYS: a day counts for Papa if at least one meal (midi or soir) is Papa
+    const gs = gardes.filter(g => g.child === child);
     const dayMap = {};
     gs.forEach(g => {
       if (!dayMap[g.date]) dayMap[g.date] = { papa: false, maman: false };
       if (g.midi === 'Papa' || g.soir === 'Papa') dayMap[g.date].papa = true;
       if (g.midi === 'Maman' || g.soir === 'Maman') dayMap[g.date].maman = true;
     });
-    let joursPapa = 0, joursMaman = 0;
-    Object.values(dayMap).forEach(d => {
-      if (d.papa) joursPapa++;
-      if (d.maman && !d.papa) joursMaman++;
-    });
-    const totalJours = joursPapa + joursMaman;
-    const pctJours = totalJours > 0 ? Math.round(joursPapa / totalJours * 100) : 0;
-    const color = child === 'chloe' ? 'var(--chloe)' : 'var(--timo)';
-    const name = child === 'chloe' ? 'Chloé' : 'Timothé';
-
-    const circumference = 2 * Math.PI * 34;
-    const offset = circumference - (pctJours / 100) * circumference;
-
-    // Count meals for this child
-    let midiP=0, soirP=0, midiM=0, soirM=0;
+    let jp = 0, jm = 0;
+    Object.values(dayMap).forEach(d => { if (d.papa) jp++; if (d.maman && !d.papa) jm++; });
+    let mp=0, mm=0, sp=0, sm=0, cant=0;
     gs.forEach(g => {
-      if (g.midi === 'Papa') midiP++;
-      if (g.midi === 'Maman') midiM++;
-      if (g.soir === 'Papa') soirP++;
-      if (g.soir === 'Maman') soirM++;
+      if (g.midi==='Papa') mp++; if (g.midi==='Maman') mm++;
+      if (g.soir==='Papa') sp++; if (g.soir==='Maman') sm++;
+      if (g.midi==='Cantine'||g.soir==='Cantine') cant++;
     });
-    const midiTotal = midiP + midiM;
-    const soirTotal = soirP + soirM;
-    const midiPct = midiTotal > 0 ? Math.round(midiP/midiTotal*100) : 0;
-    const soirPct = soirTotal > 0 ? Math.round(soirP/soirTotal*100) : 0;
+    const depC = deps.filter(d => d.enfant === child).reduce((s,d) => s + d.montant, 0);
+    stats[child] = { jp, jm, jt: jp+jm, mp, mm, sp, sm, cant, dep: depC };
+  });
+  return stats;
+}
 
-    html += '<div class="stat-ring">' +
-      '<svg viewBox="0 0 80 80">' +
-        '<circle cx="40" cy="40" r="34" fill="none" stroke="var(--bg3)" stroke-width="8"/>' +
-        '<circle cx="40" cy="40" r="34" fill="none" stroke="'+color+'" stroke-width="8" ' +
-          'stroke-dasharray="'+circumference+'" stroke-dashoffset="'+offset+'" ' +
-          'stroke-linecap="round" transform="rotate(-90 40 40)"/>' +
-        '<text x="40" y="44" text-anchor="middle" fill="'+color+'" font-size="16" font-weight="700">'+pctJours+'%</text>' +
-      '</svg>' +
-      '<div class="info">' +
-        '<div style="font-size:15px;font-weight:700;color:'+color+'">'+name+'</div>' +
-        '<div class="stat-row"><span><span class="stat-dot" style="background:var(--papa)"></span>Papa</span><span style="font-weight:600">'+joursPapa+' jours ('+pctJours+'%)</span></div>' +
-        '<div class="stat-bar"><div class="stat-bar-fill" style="width:'+pctJours+'%;background:var(--papa)"></div></div>' +
-        '<div class="stat-row"><span><span class="stat-dot" style="background:var(--maman)"></span>Maman</span><span style="font-weight:600">'+joursMaman+' jours ('+(totalJours>0?100-pctJours:0)+'%)</span></div>' +
-        '<div class="stat-bar"><div class="stat-bar-fill" style="width:'+(totalJours>0?100-pctJours:0)+'%;background:var(--maman)"></div></div>' +
-        '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">' +
-          '<div class="stat-row"><span>☀️ Repas midi Papa</span><span style="font-weight:600;color:var(--papa)">'+midiPct+'% <span style="color:var(--t3);font-size:11px">('+midiP+'/'+midiTotal+')</span></span></div>' +
-          '<div class="stat-row"><span>🌙 Repas soir Papa</span><span style="font-weight:600;color:var(--papa)">'+soirPct+'% <span style="color:var(--t3);font-size:11px">('+soirP+'/'+soirTotal+')</span></span></div>' +
-        '</div>' +
+function renderRing(pct, color, size) {
+  const r = size === 'sm' ? 20 : 34;
+  const sw = size === 'sm' ? 5 : 8;
+  const vb = size === 'sm' ? 50 : 80;
+  const c = 2 * Math.PI * r;
+  const o = c - (pct/100)*c;
+  const fs = size === 'sm' ? 11 : 16;
+  const cx = vb/2;
+  return '<svg viewBox="0 0 '+vb+' '+vb+'" width="'+(size==='sm'?40:80)+'" height="'+(size==='sm'?40:80)+'">' +
+    '<circle cx="'+cx+'" cy="'+cx+'" r="'+r+'" fill="none" stroke="#252a3a" stroke-width="'+sw+'"/>' +
+    '<circle cx="'+cx+'" cy="'+cx+'" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="'+sw+'" ' +
+      'stroke-dasharray="'+c+'" stroke-dashoffset="'+o+'" stroke-linecap="round" transform="rotate(-90 '+cx+' '+cx+')"/>' +
+    '<text x="'+cx+'" y="'+(cx+fs/3)+'" text-anchor="middle" fill="'+color+'" font-size="'+fs+'" font-weight="700">'+pct+'%</text>' +
+  '</svg>';
+}
+
+function renderChildBlock(child, s, color, name) {
+  const pctJ = s.jt > 0 ? Math.round(s.jp/s.jt*100) : 0;
+  const midiT = s.mp+s.mm; const soirT = s.sp+s.sm;
+  const midiPct = midiT>0 ? Math.round(s.mp/midiT*100) : 0;
+  const soirPct = soirT>0 ? Math.round(s.sp/soirT*100) : 0;
+  return '<div style="flex:1;min-width:140px">' +
+    '<div style="text-align:center;margin-bottom:8px">' +
+      '<div style="font-size:13px;font-weight:700;color:'+color+'">'+name+'</div>' +
+      renderRing(pctJ, color, 'lg') +
+    '</div>' +
+    '<div class="stat-row"><span><span class="stat-dot" style="background:var(--papa)"></span>Papa</span><span style="font-weight:600">'+s.jp+'j ('+pctJ+'%)</span></div>' +
+    '<div class="stat-bar"><div class="stat-bar-fill" style="width:'+pctJ+'%;background:var(--papa)"></div></div>' +
+    '<div class="stat-row"><span><span class="stat-dot" style="background:var(--maman)"></span>Maman</span><span style="font-weight:600">'+s.jm+'j ('+(s.jt>0?100-pctJ:0)+'%)</span></div>' +
+    '<div class="stat-bar"><div class="stat-bar-fill" style="width:'+(s.jt>0?100-pctJ:0)+'%;background:var(--maman)"></div></div>' +
+    '<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);font-size:12px">' +
+      '<div class="stat-row"><span>☀️ Midi Papa</span><span style="color:var(--papa);font-weight:600">'+midiPct+'%</span></div>' +
+      '<div class="stat-row"><span>🌙 Soir Papa</span><span style="color:var(--papa);font-weight:600">'+soirPct+'%</span></div>' +
+      '<div class="stat-row"><span>🏫 Cantine</span><span style="color:var(--cantine);font-weight:600">'+s.cant+'</span></div>' +
+      '<div class="stat-row"><span>💶 Frais</span><span style="color:var(--danger);font-weight:600">'+fmt(s.dep)+'</span></div>' +
+    '</div>' +
+  '</div>';
+}
+
+function renderBilan() {
+  const label = bilanMode === 'year' ? bilanYear : MONTHS_FR[bilanMonth]+' '+bilanYear;
+  document.getElementById('bilan-month-label').textContent = label;
+  const el = document.getElementById('bilan-content');
+
+  // Filter data
+  const filterGardes = (m, y) => DB.gardes.filter(g => {
+    const d = new Date(g.date);
+    if (m === -1) return d.getFullYear() === y;
+    return d.getMonth() === m && d.getFullYear() === y;
+  });
+  const filterDeps = (m, y) => DB.depEnfants.filter(d => {
+    const dt = new Date(d.date);
+    if (m === -1) return dt.getFullYear() === y;
+    return dt.getMonth() === m && dt.getFullYear() === y;
+  });
+
+  let html = '';
+
+  if (bilanMode === 'month') {
+    // MONTHLY VIEW
+    const gs = filterGardes(bilanMonth, bilanYear);
+    const ds = filterDeps(bilanMonth, bilanYear);
+    const stats = getStats(gs, ds);
+
+    html += '<div class="card"><div class="card-title">⚖️ Garde — '+MONTHS_FR[bilanMonth]+'</div>' +
+      '<div style="display:flex;gap:12px;flex-wrap:wrap">' +
+        renderChildBlock('chloe', stats.chloe, 'var(--chloe)', '👧 Chloé') +
+        renderChildBlock('timo', stats.timo, 'var(--timo)', '👦 Timothé') +
+      '</div></div>';
+
+    // Yearly summary below
+    const gsY = filterGardes(-1, bilanYear);
+    const dsY = filterDeps(-1, bilanYear);
+    const statsY = getStats(gsY, dsY);
+
+    html += '<div class="card"><div class="card-title">📅 Cumul annuel '+bilanYear+'</div>' +
+      '<div style="display:flex;gap:12px;flex-wrap:wrap">' +
+        renderChildBlock('chloe', statsY.chloe, 'var(--chloe)', '👧 Chloé') +
+        renderChildBlock('timo', statsY.timo, 'var(--timo)', '👦 Timothé') +
+      '</div></div>';
+
+    // Monthly bar chart text
+    html += '<div class="card"><div class="card-title">📊 Evolution mois par mois</div>';
+    html += renderMonthlyTable(bilanYear);
+    html += '</div>';
+
+  } else {
+    // ANNUAL VIEW
+    const gsY = filterGardes(-1, bilanYear);
+    const dsY = filterDeps(-1, bilanYear);
+    const statsY = getStats(gsY, dsY);
+
+    html += '<div class="card"><div class="card-title">⚖️ Garde — Année '+bilanYear+'</div>' +
+      '<div style="display:flex;gap:12px;flex-wrap:wrap">' +
+        renderChildBlock('chloe', statsY.chloe, 'var(--chloe)', '👧 Chloé') +
+        renderChildBlock('timo', statsY.timo, 'var(--timo)', '👦 Timothé') +
+      '</div></div>';
+
+    html += '<div class="card"><div class="card-title">📊 Détail par mois</div>';
+    html += renderMonthlyTable(bilanYear);
+    html += '</div>';
+  }
+
+  el.innerHTML = html;
+}
+
+function renderMonthlyTable(year) {
+  const shortM = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+  let html = '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:500px">';
+  html += '<tr style="border-bottom:1px solid var(--border)">' +
+    '<th style="text-align:left;padding:4px">Mois</th>' +
+    '<th style="padding:4px">Chloé Papa%</th><th style="padding:4px">Chloé j.</th>' +
+    '<th style="padding:4px">Tim. Papa%</th><th style="padding:4px">Tim. j.</th>' +
+    '<th style="padding:4px">Frais</th></tr>';
+
+  for (let m = 0; m < 12; m++) {
+    const gs = DB.gardes.filter(g => { const d=new Date(g.date); return d.getMonth()===m && d.getFullYear()===year; });
+    const ds = DB.depEnfants.filter(d => { const dt=new Date(d.date); return dt.getMonth()===m && dt.getFullYear()===year; });
+    const stats = getStats(gs, ds);
+    const sc = stats.chloe, st = stats.timo;
+    const cpct = sc.jt>0 ? Math.round(sc.jp/sc.jt*100) : '-';
+    const tpct = st.jt>0 ? Math.round(st.jp/st.jt*100) : '-';
+    const totalDep = sc.dep + st.dep;
+    const bg = m === bilanMonth && bilanMode === 'month' ? 'background:var(--bg3)' : '';
+    html += '<tr style="border-bottom:1px solid var(--border);'+bg+'">' +
+      '<td style="padding:4px;font-weight:600">'+shortM[m]+'</td>' +
+      '<td style="padding:4px;text-align:center;color:var(--chloe)">'+(cpct==='-'?'-':cpct+'%')+'</td>' +
+      '<td style="padding:4px;text-align:center">'+sc.jp+'</td>' +
+      '<td style="padding:4px;text-align:center;color:var(--timo)">'+(tpct==='-'?'-':tpct+'%')+'</td>' +
+      '<td style="padding:4px;text-align:center">'+st.jp+'</td>' +
+      '<td style="padding:4px;text-align:center;color:var(--danger)">'+(totalDep>0?fmt(totalDep):'-')+'</td></tr>';
+  }
+
+  // Total row
+  const gsAll = DB.gardes.filter(g => g.date.startsWith(String(year)));
+  const dsAll = DB.depEnfants.filter(d => (d.date||'').startsWith(String(year)));
+  const sa = getStats(gsAll, dsAll);
+  const cpctA = sa.chloe.jt>0 ? Math.round(sa.chloe.jp/sa.chloe.jt*100) : '-';
+  const tpctA = sa.timo.jt>0 ? Math.round(sa.timo.jp/sa.timo.jt*100) : '-';
+  html += '<tr style="font-weight:700;border-top:2px solid var(--accent)">' +
+    '<td style="padding:4px">TOTAL</td>' +
+    '<td style="padding:4px;text-align:center;color:var(--chloe)">'+(cpctA==='-'?'-':cpctA+'%')+'</td>' +
+    '<td style="padding:4px;text-align:center">'+sa.chloe.jp+'</td>' +
+    '<td style="padding:4px;text-align:center;color:var(--timo)">'+(tpctA==='-'?'-':tpctA+'%')+'</td>' +
+    '<td style="padding:4px;text-align:center">'+sa.timo.jp+'</td>' +
+    '<td style="padding:4px;text-align:center;color:var(--danger)">'+fmt(sa.chloe.dep+sa.timo.dep)+'</td></tr>';
+  html += '</table></div>';
+
+  // Visual bars
+  html += '<div style="margin-top:10px">';
+  html += '<div style="font-size:11px;color:var(--t3);margin-bottom:6px">Papa % par mois</div>';
+  for (let m = 0; m < 12; m++) {
+    const gs = DB.gardes.filter(g => { const d=new Date(g.date); return d.getMonth()===m && d.getFullYear()===year; });
+    const st = getStats(gs, []);
+    const allJp = st.chloe.jp + st.timo.jp;
+    const allJt = st.chloe.jt + st.timo.jt;
+    const pct = allJt > 0 ? Math.round(allJp/allJt*100) : 0;
+    if (allJt === 0) continue;
+    const barColor = pct >= 50 ? 'var(--papa)' : 'var(--maman)';
+    html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">' +
+      '<span style="font-size:10px;width:28px;color:var(--t3)">'+shortM[m]+'</span>' +
+      '<div style="flex:1;height:8px;border-radius:4px;background:var(--bg3)">' +
+        '<div style="height:100%;width:'+pct+'%;border-radius:4px;background:'+barColor+'"></div>' +
       '</div>' +
+      '<span style="font-size:10px;width:30px;text-align:right;font-weight:600;color:'+barColor+'">'+pct+'%</span>' +
     '</div>';
-  });
-  gardeEl.innerHTML = html;
+  }
+  html += '</div>';
 
-  // Repas tiles
-  const repasEl = document.getElementById('bilan-repas');
-  let rhtml = '';
-  [['chloe','Chloé','var(--chloe)'],['timo','Timothé','var(--timo)']].forEach(([child,name,color]) => {
-    const gs = DB.gardes.filter(g => g.child === child);
-    let midiP=0, soirP=0, midiTotal=0, soirTotal=0;
-    gs.forEach(g => {
-      if (g.midi === 'Papa' || g.midi === 'Maman') { midiTotal++; if (g.midi==='Papa') midiP++; }
-      if (g.soir === 'Papa' || g.soir === 'Maman') { soirTotal++; if (g.soir==='Papa') soirP++; }
-    });
-    const midiPct = midiTotal > 0 ? Math.round(midiP/midiTotal*100) : 0;
-    const soirPct = soirTotal > 0 ? Math.round(soirP/soirTotal*100) : 0;
-    rhtml += '<div class="repas-tile"><div class="lbl" style="color:'+color+'">'+name+' ☀️ Midi</div><div class="val" style="color:var(--papa)">'+midiPct+'%</div></div>';
-    rhtml += '<div class="repas-tile"><div class="lbl" style="color:'+color+'">'+name+' 🌙 Soir</div><div class="val" style="color:var(--papa)">'+soirPct+'%</div></div>';
-  });
-  repasEl.innerHTML = rhtml;
+  return html;
+}
 
-  // Cantine
-  const cantineEl = document.getElementById('bilan-cantine');
-  let chtml = '';
-  [['chloe','Chloé','var(--chloe)'],['timo','Timothé','var(--timo)']].forEach(([child,name,color]) => {
-    const count = DB.gardes.filter(g => g.child === child && (g.midi === 'Cantine' || g.soir === 'Cantine')).length;
-    chtml += '<div class="repas-tile"><div class="lbl" style="color:'+color+'">'+name+'</div><div class="val" style="color:var(--cantine)">'+count+'</div></div>';
+// RAZ month
+function razMois() {
+  const label = MONTHS_FR[bilanMonth] + ' ' + bilanYear;
+  if (!confirm('Supprimer toutes les gardes de ' + label + ' ? Cette action est irréversible.')) return;
+  DB.gardes = DB.gardes.filter(g => {
+    const d = new Date(g.date);
+    return !(d.getMonth() === bilanMonth && d.getFullYear() === bilanYear);
   });
-  cantineEl.innerHTML = chtml;
-
-  // Dépenses enfants
-  const depEl = document.getElementById('bilan-dep');
-  let totalC = 0, totalT = 0;
-  DB.depEnfants.forEach(d => {
-    if (d.enfant === 'chloe') totalC += d.montant;
-    else totalT += d.montant;
+  DB.depEnfants = DB.depEnfants.filter(d => {
+    const dt = new Date(d.date);
+    return !(dt.getMonth() === bilanMonth && dt.getFullYear() === bilanYear);
   });
-  depEl.innerHTML =
-    '<div class="stat-row"><span style="color:var(--chloe)">👧 Chloé</span><span style="font-weight:700">'+fmt(totalC)+'</span></div>' +
-    '<div class="stat-row"><span style="color:var(--timo)">👦 Timothé</span><span style="font-weight:700">'+fmt(totalT)+'</span></div>' +
-    '<div class="stat-row" style="border-top:1px solid var(--border);padding-top:6px;margin-top:4px"><span style="font-weight:700">Total</span><span style="font-weight:700;color:var(--danger)">'+fmt(totalC+totalT)+'</span></div>';
+  save();
+  toast(label + ' supprimé');
+  renderBilan();
 }
 
 // ===== HISTORIQUE =====
@@ -2172,61 +2301,91 @@ setInterval(() => {
 }, 60000);
 
 // ===== PDF EXPORT =====
-function exportPdfMensuel() {
-  const now = new Date();
-  const m = now.getMonth();
-  const y = now.getFullYear();
+function exportPdfBilan() {
+  const m = bilanMonth;
+  const y = bilanYear;
+  const isYear = bilanMode === 'year';
+  const label = isYear ? 'Année ' + y : MONTHS_FR[m] + ' ' + y;
+
   const gs = DB.gardes.filter(g => {
     const d = new Date(g.date);
+    if (isYear) return d.getFullYear() === y;
     return d.getMonth() === m && d.getFullYear() === y;
   });
+  const ds = DB.depEnfants.filter(d => {
+    const dt = new Date(d.date);
+    if (isYear) return dt.getFullYear() === y;
+    return dt.getMonth() === m && dt.getFullYear() === y;
+  });
+  const stats = getStats(gs, ds);
 
-  let html = '<h2>Rapport mensuel - ' + now.toLocaleDateString('fr-FR',{month:'long',year:'numeric'}) + '</h2>';
-  html += '<p>Total gardes: ' + gs.length + '</p>';
+  let html = '<style>body{font-family:Arial,sans-serif;padding:20px;color:#222}table{margin:10px 0;width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px;font-size:12px}h1,h2,h3{margin:10px 0}hr{margin:20px 0}.bar{height:18px;border-radius:4px;display:inline-block;vertical-align:middle}.row{display:flex;gap:30px;margin:10px 0}</style>';
 
+  html += '<h1 style="text-align:center">RAPPORT DE GARDE</h1>';
+  html += '<h3 style="text-align:center">' + label + '</h3><hr>';
+
+  // Stats for each child
   ['chloe','timo'].forEach(child => {
-    const cg = gs.filter(g => g.child === child);
-    const name = child === 'chloe' ? 'Chloe' : 'Timothe';
-    html += '<h3>' + name + ' (' + cg.length + ' jours)</h3>';
-    html += '<table border="1" cellpadding="4" style="border-collapse:collapse;width:100%;font-size:12px">';
-    html += '<tr><th>Date</th><th>Heures</th><th>Midi</th><th>Soir</th><th>Notes</th></tr>';
-    cg.forEach(g => {
-      html += '<tr><td>'+g.date+'</td><td>'+(g.debut||'')+'-'+(g.fin||'')+'</td><td>'+(g.midi||'')+'</td><td>'+(g.soir||'')+'</td><td>'+(g.notes||'')+'</td></tr>';
+    const s = stats[child];
+    const name = child==='chloe' ? 'Chloe' : 'Timothe';
+    const pctJ = s.jt>0 ? Math.round(s.jp/s.jt*100) : 0;
+    const midiT = s.mp+s.mm; const soirT = s.sp+s.sm;
+    const midiPct = midiT>0 ? Math.round(s.mp/midiT*100) : 0;
+    const soirPct = soirT>0 ? Math.round(s.sp/soirT*100) : 0;
+
+    html += '<h3>' + name + '</h3>';
+    html += '<p><strong>Jours de garde:</strong> Papa ' + s.jp + ' jours (' + pctJ + '%) — Maman ' + s.jm + ' jours (' + (s.jt>0?100-pctJ:0) + '%)</p>';
+    html += '<div style="height:20px;background:#eee;border-radius:4px;margin:8px 0">' +
+      '<div class="bar" style="width:'+pctJ+'%;background:#34d399;height:20px">Papa '+pctJ+'%</div>' +
+    '</div>';
+    html += '<p>Repas midi Papa: <strong>' + midiPct + '%</strong> (' + s.mp + '/' + midiT + ')</p>';
+    html += '<p>Repas soir Papa: <strong>' + soirPct + '%</strong> (' + s.sp + '/' + soirT + ')</p>';
+    html += '<p>Cantine: <strong>' + s.cant + '</strong> repas</p>';
+    html += '<p>Depenses: <strong>' + fmt(s.dep) + '</strong></p>';
+  });
+
+  // Monthly table if annual
+  if (isYear) {
+    html += '<h3>Detail par mois</h3>';
+    html += '<table><tr><th>Mois</th><th>Chloe Papa%</th><th>Chloe j.</th><th>Tim. Papa%</th><th>Tim. j.</th><th>Frais</th></tr>';
+    const shortM = ['Jan','Fev','Mar','Avr','Mai','Jun','Jul','Aou','Sep','Oct','Nov','Dec'];
+    for (let mm = 0; mm < 12; mm++) {
+      const mgs = DB.gardes.filter(g => { const d=new Date(g.date); return d.getMonth()===mm && d.getFullYear()===y; });
+      const mds = DB.depEnfants.filter(d => { const dt=new Date(d.date); return dt.getMonth()===mm && dt.getFullYear()===y; });
+      const ms = getStats(mgs, mds);
+      const cp = ms.chloe.jt>0 ? Math.round(ms.chloe.jp/ms.chloe.jt*100)+'%' : '-';
+      const tp = ms.timo.jt>0 ? Math.round(ms.timo.jp/ms.timo.jt*100)+'%' : '-';
+      html += '<tr><td>'+shortM[mm]+'</td><td>'+cp+'</td><td>'+ms.chloe.jp+'</td><td>'+tp+'</td><td>'+ms.timo.jp+'</td><td>'+fmt(ms.chloe.dep+ms.timo.dep)+'</td></tr>';
+    }
+    html += '</table>';
+  }
+
+  // List of gardes
+  html += '<h3>Liste des gardes</h3>';
+  html += '<table><tr><th>Date</th><th>Enfant</th><th>Heures</th><th>Midi</th><th>Soir</th><th>Notes</th></tr>';
+  gs.sort((a,b) => a.date.localeCompare(b.date)).forEach(g => {
+    html += '<tr><td>'+g.date+'</td><td>'+(g.child==='chloe'?'Chloe':'Timothe')+'</td><td>'+(g.debut||'')+'-'+(g.fin||'')+'</td><td>'+(g.midi||'')+'</td><td>'+(g.soir||'')+'</td><td>'+(g.notes||'')+'</td></tr>';
+  });
+  html += '</table>';
+
+  // Dépenses
+  if (ds.length) {
+    html += '<h3>Depenses enfants</h3>';
+    html += '<table><tr><th>Date</th><th>Enfant</th><th>Categorie</th><th>Description</th><th>Montant</th></tr>';
+    ds.forEach(d => {
+      html += '<tr><td>'+d.date+'</td><td>'+(d.enfant==='chloe'?'Chloe':'Timothe')+'</td><td>'+d.cat+'</td><td>'+(d.desc||'')+'</td><td>'+fmt(d.montant)+'</td></tr>';
     });
     html += '</table>';
-  });
+  }
+
+  html += '<hr><p style="font-size:11px;color:#666">Document genere le ' + new Date().toLocaleDateString('fr-FR') + ' via MesEnfants.</p>';
 
   printHtml(html);
 }
 
 function exportPdfAnnuel() {
-  const y = new Date().getFullYear();
-  const gs = DB.gardes.filter(g => g.date.startsWith(String(y)));
-
-  let html = '<h2>Rapport annuel ' + y + '</h2>';
-  html += '<p>Total gardes: ' + gs.length + '</p>';
-
-  const months = ['Jan','Fev','Mar','Avr','Mai','Juin','Juil','Aout','Sep','Oct','Nov','Dec'];
-  html += '<table border="1" cellpadding="4" style="border-collapse:collapse;width:100%;font-size:11px">';
-  html += '<tr><th>Mois</th><th>Chloe Papa%</th><th>Chloe Maman%</th><th>Timothe Papa%</th><th>Timothe Maman%</th></tr>';
-  for (let m = 0; m < 12; m++) {
-    const mg = gs.filter(g => new Date(g.date).getMonth() === m);
-    const pcts = {};
-    ['chloe','timo'].forEach(child => {
-      const cg = mg.filter(g => g.child === child);
-      let papa = 0, total = 0;
-      cg.forEach(g => {
-        if (g.midi==='Papa'||g.midi==='Maman') { total++; if(g.midi==='Papa') papa++; }
-        if (g.soir==='Papa'||g.soir==='Maman') { total++; if(g.soir==='Papa') papa++; }
-      });
-      pcts[child+'P'] = total > 0 ? Math.round(papa/total*100) : '-';
-      pcts[child+'M'] = total > 0 ? Math.round((total-papa)/total*100) : '-';
-    });
-    html += '<tr><td>'+months[m]+'</td><td>'+pcts.chloeP+'%</td><td>'+pcts.chloeM+'%</td><td>'+pcts.timoP+'%</td><td>'+pcts.timoM+'%</td></tr>';
-  }
-  html += '</table>';
-
-  printHtml(html);
+  bilanMode = 'year';
+  exportPdfBilan();
 }
 
 function exportJuridique() {
