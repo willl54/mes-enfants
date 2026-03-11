@@ -1081,7 +1081,7 @@ select.finput {
     <button class="chip" style="font-size:11px;white-space:nowrap;flex-shrink:0" onclick="filterBudgetDep('autre',this)">Autre</button>
   </div>
 
-  <div id="budget-dep-list" style="display:flex;flex-direction:column;background:var(--bg2);border-radius:14px;border:1px solid var(--line2);overflow:hidden"><div style="padding:14px;color:var(--t3);font-size:12px">Aucune dépense ce cycle</div></div>
+  <div id="budget-dep-list" style="background:var(--bg2);border-radius:14px;border:1px solid var(--line2)"><div style="padding:14px;color:var(--t3);font-size:12px">Aucune dépense ce cycle</div></div>
 
   <!-- Bandeau totaux fixe -->
   <div id="budget-totaux" style="display:none;grid-template-columns:1fr 1fr 1fr;gap:6px;background:var(--bg2);border-radius:14px;border:1px solid var(--line2);padding:12px 14px;text-align:center">
@@ -2265,33 +2265,51 @@ function filterBudgetDep(f, btn) {
 // ── RENDER BUDGET ──
 
 function renderBdepItem(d) {
+  var idx = Object.keys(window._bdepIds).length;
+  window._bdepIds[idx] = d.id;
+
   var isMoi   = !d.pour || d.pour==='moi';
   var isChloe = d.pour==='Chloé';
   var isTimo  = d.pour==='Timothé';
+  var montant = parseFloat(d.montant).toFixed(2);
+  var cat     = BDEP_CAT_LABELS[d.cat] || d.cat;
+  var date    = fmtDate(d.date);
   var icon    = getBdepIcon(d.cat);
   var bg      = (BDEP_CAT_COLORS[d.cat]||'#94a3b8')+'22';
-  var cat     = BDEP_CAT_LABELS[d.cat]||d.cat;
-  var montant = parseFloat(d.montant).toFixed(2);
-  var date    = fmtDate(d.date);
-  var eid     = encodeURIComponent(d.id);
-  var html = '';
-  html += '<div class="bdep-item">';
-  html += '<div class="bdep-top">';
-  html += '<div style="width:32px;height:32px;border-radius:8px;background:'+bg+';display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">'+icon+'</div>';
-  html += '<div class="bdep-info"><div class="dep-desc">'+d.desc+'</div><div class="dep-meta">'+date+' · '+cat+'</div></div>';
-  html += '<div style="display:flex;align-items:center;gap:5px;flex-shrink:0">';
-  html += '<span style="font-size:14px;font-weight:800;color:var(--danger)">'+montant+'€</span>';
-  html += '<button data-action="edit" data-id="'+eid+'" style="background:var(--bg4);border:1px solid var(--line2);color:var(--t2);border-radius:7px;width:30px;height:30px;font-size:13px;cursor:pointer">✏️</button>';
-  html += '<button data-action="del"  data-id="'+eid+'" style="background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.2);color:var(--danger);border-radius:7px;width:30px;height:30px;font-size:13px;cursor:pointer">✕</button>';
-  html += '</div></div>';
-  html += '<div class="bdep-attr">';
-  html += '<button data-action="pour" data-id="'+eid+'" data-pour="moi"     class="'+(isMoi  ?'active-moi'  :'')+'">👤 Moi</button>';
-  html += '<button data-action="pour" data-id="'+eid+'" data-pour="Chloé"   class="'+(isChloe?'active-chloe':'')+'">👧 Chloé</button>';
-  html += '<button data-action="pour" data-id="'+eid+'" data-pour="Timothé" class="'+(isTimo ?'active-timo' :'')+'">👦 Timothé</button>';
-  html += '</div>';
-  html += '</div>';
-  return html;
+  var s = String(idx);
+
+  var sMoi    = isMoi   ? 'background:rgba(148,163,184,.18);color:var(--t1)'  : 'background:none;color:var(--t3)';
+  var sChloe  = isChloe ? 'background:rgba(192,132,252,.18);color:var(--chloe)' : 'background:none;color:var(--t3)';
+  var sTimo   = isTimo  ? 'background:rgba(96,165,250,.18);color:var(--timo)'  : 'background:none;color:var(--t3)';
+
+  return '<div style="border-bottom:1px solid var(--line2)">'
+    + '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px">'
+      + '<div style="width:32px;height:32px;border-radius:8px;background:'+bg+';display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">'+icon+'</div>'
+      + '<div style="flex:1;min-width:0">'
+        + '<div style="font-size:13px;font-weight:600;color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+d.desc+'</div>'
+        + '<div style="font-size:11px;color:var(--t3);margin-top:1px">'+date+' · '+cat+'</div>'
+      + '</div>'
+      + '<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">'
+        + '<span style="font-size:13px;font-weight:800;color:var(--danger)">'+montant+'€</span>'
+        + '<button onclick="_bdepEdit('+s+')" style="background:var(--bg4);border:1px solid var(--line2);color:var(--t2);border-radius:6px;width:28px;height:28px;font-size:12px;cursor:pointer">✏️</button>'
+        + '<button onclick="_bdepDel('+s+')"  style="background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.25);color:var(--danger);border-radius:6px;width:28px;height:28px;font-size:12px;cursor:pointer">✕</button>'
+      + '</div>'
+    + '</div>'
+    + '<div style="display:flex;border-top:1px solid var(--line2)">'
+      + '<button onclick="_bdepPour('+s+',0)" style="flex:1;padding:7px 2px;font-size:11px;font-weight:700;border:none;cursor:pointer;border-right:1px solid var(--line2);'+sMoi+'">&#128100; Moi</button>'
+      + '<button onclick="_bdepPour('+s+',1)" style="flex:1;padding:7px 2px;font-size:11px;font-weight:700;border:none;cursor:pointer;border-right:1px solid var(--line2);'+sChloe+'">&#128103; Chloé</button>'
+      + '<button onclick="_bdepPour('+s+',2)" style="flex:1;padding:7px 2px;font-size:11px;font-weight:700;border:none;cursor:pointer;'+sTimo+'">&#128102; Timothé</button>'
+    + '</div>'
+  + '</div>';
 }
+
+
+// Fonctions globales appelées par les onclick (idx = index numérique, p = 0/1/2)
+var _POURS = ['moi','Chloé','Timothé'];
+function _bdepEdit(idx) { openEditBudgetDep(window._bdepIds[idx]); }
+function _bdepDel(idx)  { deleteBudgetDep(window._bdepIds[idx]); }
+function _bdepPour(idx, p) { setPour(window._bdepIds[idx], _POURS[p]); }
+
 
 function renderBudget() {
   const b = getBudget();
@@ -2378,6 +2396,7 @@ function renderBudget() {
   // Liste dépenses variables filtrées
   let deps = [...depsCycle];
   if (budgetDepFilter) deps = deps.filter(d=>d.cat===budgetDepFilter);
+  window._bdepIds = {};
   const listEl = document.getElementById('budget-dep-list');
   listEl.innerHTML = deps.length ? deps.sort((a,b)=>b.date.localeCompare(a.date)).map(d=>renderBdepItem(d)).join('')
     : '<div style="padding:14px;color:var(--t3);font-size:12px">Aucune dépense ce cycle</div>';
