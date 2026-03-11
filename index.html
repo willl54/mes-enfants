@@ -2183,9 +2183,23 @@ function saveBudgetDep() {
   }
   saveState(); closeModal('budgetDepModal'); renderBudget();
 }
+// Gestionnaire centralisé clics budget
+document.addEventListener('click', function(e) {
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  const action = btn.dataset.action;
+  const id = decodeURIComponent(btn.dataset.id||'');
+  if (!id) return;
+  if (action==='del')  deleteBudgetDep(id);
+  if (action==='edit') openEditBudgetDep(id);
+  if (action==='pour') setPour(id, btn.dataset.pour);
+});
+
 function deleteBudgetDep(id) {
-  getBudget().depenses = getBudget().depenses.filter(d=>d.id!==id);
-  saveState(); renderBudget(); toast('🗑️ Supprimé');
+  const b = getBudget();
+  b.depenses = b.depenses.filter(d=>d.id!==id);
+  state.depenses = state.depenses.filter(d=>d.id!==id+'_enfant');
+  saveState(); renderBudget(); toast('Supprimé');
 }
 function openEditBudgetDep(id) {
   const d = getBudget().depenses.find(x=>x.id===id); if (!d) return;
@@ -2259,27 +2273,24 @@ function renderBdepItem(d) {
   var cat     = BDEP_CAT_LABELS[d.cat]||d.cat;
   var montant = parseFloat(d.montant).toFixed(2);
   var date    = fmtDate(d.date);
-  return [
-    '<div class="bdep-item">',
-      '<div class="bdep-top">',
-        '<div style="width:32px;height:32px;border-radius:8px;background:'+bg+';display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">'+icon+'</div>',
-        '<div class="bdep-info">',
-          '<div class="dep-desc">'+d.desc+'</div>',
-          '<div class="dep-meta">'+date+' · '+cat+'</div>',
-        '</div>',
-        '<div style="display:flex;align-items:center;gap:5px;flex-shrink:0">',
-          '<span style="font-size:14px;font-weight:800;color:var(--danger)">'+montant+'€</span>',
-          '<button onclick="openEditBudgetDep(\'' +d.id+ '\')" style="background:var(--bg4);border:1px solid var(--line2);color:var(--t2);border-radius:7px;width:30px;height:30px;font-size:14px;cursor:pointer">✏️</button>',
-          '<button onclick="deleteBudgetDep(\'' +d.id+ '\')" style="background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.2);color:var(--danger);border-radius:7px;width:30px;height:30px;font-size:14px;cursor:pointer">✕</button>',
-        '</div>',
-      '</div>',
-      '<div class="bdep-attr">',
-        '<button onclick="setPour(\'' +d.id+ '\',\'moi\')"     class="'+(isMoi  ?'active-moi':'')  +'">👤 Moi</button>',
-        '<button onclick="setPour(\'' +d.id+ '\',\'Chloé\')"   class="'+(isChloe?'active-chloe':'')+'">👧 Chloé</button>',
-        '<button onclick="setPour(\'' +d.id+ '\',\'Timothé\')" class="'+(isTimo ?'active-timo':'') +'">👦 Timothé</button>',
-      '</div>',
-    '</div>'
-  ].join('');
+  var eid     = encodeURIComponent(d.id);
+  var html = '';
+  html += '<div class="bdep-item">';
+  html += '<div class="bdep-top">';
+  html += '<div style="width:32px;height:32px;border-radius:8px;background:'+bg+';display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">'+icon+'</div>';
+  html += '<div class="bdep-info"><div class="dep-desc">'+d.desc+'</div><div class="dep-meta">'+date+' · '+cat+'</div></div>';
+  html += '<div style="display:flex;align-items:center;gap:5px;flex-shrink:0">';
+  html += '<span style="font-size:14px;font-weight:800;color:var(--danger)">'+montant+'€</span>';
+  html += '<button data-action="edit" data-id="'+eid+'" style="background:var(--bg4);border:1px solid var(--line2);color:var(--t2);border-radius:7px;width:30px;height:30px;font-size:13px;cursor:pointer">✏️</button>';
+  html += '<button data-action="del"  data-id="'+eid+'" style="background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.2);color:var(--danger);border-radius:7px;width:30px;height:30px;font-size:13px;cursor:pointer">✕</button>';
+  html += '</div></div>';
+  html += '<div class="bdep-attr">';
+  html += '<button data-action="pour" data-id="'+eid+'" data-pour="moi"     class="'+(isMoi  ?'active-moi'  :'')+'">👤 Moi</button>';
+  html += '<button data-action="pour" data-id="'+eid+'" data-pour="Chloé"   class="'+(isChloe?'active-chloe':'')+'">👧 Chloé</button>';
+  html += '<button data-action="pour" data-id="'+eid+'" data-pour="Timothé" class="'+(isTimo ?'active-timo' :'')+'">👦 Timothé</button>';
+  html += '</div>';
+  html += '</div>';
+  return html;
 }
 
 function renderBudget() {
@@ -2764,32 +2775,13 @@ function setPour(id, pour) {
   const b = getBudget();
   const dep = b.depenses.find(d=>d.id===id);
   if (!dep) return;
-  const wasPour = dep.pour;
   dep.pour = pour;
-
-  // Si attribué à un enfant → déverser dans state.depenses (onglet Dépenses)
-  if (pour === 'Chloé' || pour === 'Timothé') {
-    // Retirer l'ancienne entrée enfant si elle existait
-    state.depenses = state.depenses.filter(d=>d.id!==id+'_enfant');
-    state.depenses.push({
-      id: id+'_enfant',
-      enfant: pour,
-      cat: dep.cat,
-      desc: dep.desc,
-      montant: dep.montant,
-      date: dep.date,
-      payer: 'Papa',
-      fromBudget: true
-    });
-    toast('👧👦 Attribué à '+pour+' — dépense ajoutée dans Dépenses enfants');
-  } else {
-    // Retirer du tableau enfants si on remet sur Moi
-    state.depenses = state.depenses.filter(d=>d.id!==id+'_enfant');
+  state.depenses = state.depenses.filter(d=>d.id!==id+'_enfant');
+  if (pour==='Chloé'||pour==='Timothé') {
+    state.depenses.push({id:id+'_enfant', enfant:pour, cat:dep.cat, desc:dep.desc, montant:dep.montant, date:dep.date, payer:'Papa', fromBudget:true});
   }
-
   saveState();
   renderBudget();
-  if (document.getElementById('page-dashboard').classList.contains('active')) renderDashboard();
 }
 
 function inlineEditDesc(id) {
