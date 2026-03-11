@@ -303,6 +303,7 @@ nav button svg { width: 22px; height: 22px; }
   pointer-events: none;
 }
 .toast.show { opacity: 1; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 /* IMPORT PREVIEW */
 .import-list { max-height: 50vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
@@ -342,6 +343,8 @@ nav button svg { width: 22px; height: 22px; }
   <h1>MesEnfants</h1>
   <div class="actions">
     <button onclick="openModal('modal-dep')">+ Dép.</button>
+    <button onclick="syncNow()" id="sync-btn" style="position:relative">🔄</button>
+    <button onclick="openModal('modal-sync')">☁️</button>
     <button onclick="doBackup()">💾</button>
     <button onclick="doRestore()">♻️</button>
     <label class="pdf-label">📥 Excel<input type="file" accept=".xlsx,.xls" onchange="importExcel(event)"></label>
@@ -683,18 +686,25 @@ nav button svg { width: 22px; height: 22px; }
 <!-- Modal: Dépense variable budget -->
 <div class="modal-overlay" id="modal-bdep">
   <div class="modal">
-    <h3>Dépense <button onclick="closeModal('modal-bdep')">✕</button></h3>
+    <h3>Dépense / Remboursement <button onclick="closeModal('modal-bdep')">✕</button></h3>
+    <div class="form-group">
+      <label class="form-label">Type</label>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" id="mb-type-dep" style="flex:1;background:var(--danger);color:#fff" onclick="setMbType('dep')">Dépense</button>
+        <button class="btn btn-sm btn-outline" id="mb-type-remb" style="flex:1" onclick="setMbType('remb')">Remboursement</button>
+      </div>
+    </div>
     <div class="form-group">
       <label class="form-label">Libellé</label>
       <input type="text" id="mb-label">
     </div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Montant €</label><input type="number" id="mb-montant" step="0.01"></div>
+      <div class="form-group"><label class="form-label">Montant €</label><input type="number" id="mb-montant" step="0.01" min="0"></div>
       <div class="form-group"><label class="form-label">Date</label><input type="date" id="mb-date"></div>
     </div>
     <div class="form-group">
       <label class="form-label">Catégorie</label>
-      <select id="mb-cat"><option>Courses</option><option>Transport</option><option>Santé</option><option>Loisirs</option><option>Sport</option><option>Logement</option><option>Enfants</option><option>Autre</option></select>
+      <select id="mb-cat"><option>Courses</option><option>Transport</option><option>Santé</option><option>Loisirs</option><option>Sport</option><option>Logement</option><option>Enfants</option><option>Remboursement</option><option>Autre</option></select>
     </div>
     <button class="btn btn-primary btn-full" onclick="saveBdep()">Enregistrer</button>
   </div>
@@ -705,16 +715,23 @@ nav button svg { width: 22px; height: 22px; }
   <div class="modal">
     <h3>Modifier <button onclick="closeModal('modal-editbdep')">✕</button></h3>
     <div class="form-group">
+      <label class="form-label">Type</label>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" id="meb-type-dep" style="flex:1;background:var(--danger);color:#fff" onclick="setMebType('dep')">Dépense</button>
+        <button class="btn btn-sm btn-outline" id="meb-type-remb" style="flex:1" onclick="setMebType('remb')">Remboursement</button>
+      </div>
+    </div>
+    <div class="form-group">
       <label class="form-label">Libellé</label>
       <input type="text" id="meb-label">
     </div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Montant €</label><input type="number" id="meb-montant" step="0.01"></div>
+      <div class="form-group"><label class="form-label">Montant €</label><input type="number" id="meb-montant" step="0.01" min="0"></div>
       <div class="form-group"><label class="form-label">Date</label><input type="date" id="meb-date"></div>
     </div>
     <div class="form-group">
       <label class="form-label">Catégorie</label>
-      <select id="meb-cat"><option>Courses</option><option>Transport</option><option>Santé</option><option>Loisirs</option><option>Sport</option><option>Logement</option><option>Enfants</option><option>Autre</option></select>
+      <select id="meb-cat"><option>Courses</option><option>Transport</option><option>Santé</option><option>Loisirs</option><option>Sport</option><option>Logement</option><option>Enfants</option><option>Remboursement</option><option>Autre</option></select>
     </div>
     <button class="btn btn-primary btn-full" onclick="saveEditBdep()">Sauvegarder</button>
   </div>
@@ -743,6 +760,28 @@ nav button svg { width: 22px; height: 22px; }
     </div>
     <div class="import-list" id="import-list"></div>
     <button class="btn btn-primary btn-full" style="margin-top:10px" onclick="confirmImport()">Importer sélection</button>
+  </div>
+</div>
+
+<!-- Modal: Sync Settings -->
+<div class="modal-overlay" id="modal-sync">
+  <div class="modal">
+    <h3>☁️ Synchronisation <button onclick="closeModal('modal-sync')">✕</button></h3>
+    <p style="font-size:12px;color:var(--t3);margin-bottom:12px">Synchronisez vos données entre tous vos appareils via Firebase (gratuit).</p>
+    <div class="form-group">
+      <label class="form-label">URL Firebase Realtime Database</label>
+      <input type="url" id="ms-url" placeholder="https://monprojet-xxxxx-default-rtdb.europe-west1.firebasedatabase.app">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Code secret (choisissez un mot de passe)</label>
+      <input type="text" id="ms-code" placeholder="Ex: papa2025">
+      <p style="font-size:10px;color:var(--t3);margin-top:4px">Ce code identifie vos données. Utilisez le même code sur tous vos appareils.</p>
+    </div>
+    <div id="sync-status" style="font-size:12px;padding:8px 0;color:var(--t3)"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-primary" style="flex:1" onclick="saveSync()">Activer</button>
+      <button class="btn btn-outline" style="color:var(--danger)" onclick="disableSync()">Désactiver</button>
+    </div>
   </div>
 </div>
 
@@ -787,7 +826,198 @@ function loadDB() {
 
 function save() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); } catch(e) {}
+  // Auto-push to Firebase if configured
+  syncPush();
 }
+
+// ===== FIREBASE SYNC =====
+const SYNC_KEY = 'mesenfants_sync_config';
+let syncConfig = loadSyncConfig();
+let syncBusy = false;
+let syncTimer = null;
+
+function loadSyncConfig() {
+  try {
+    const raw = localStorage.getItem(SYNC_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+
+function saveSyncConfig(cfg) {
+  syncConfig = cfg;
+  try { localStorage.setItem(SYNC_KEY, JSON.stringify(cfg)); } catch(e) {}
+}
+
+function getSyncUrl() {
+  if (!syncConfig || !syncConfig.url || !syncConfig.code) return null;
+  let url = syncConfig.url.replace(/\/$/,'');
+  return url + '/users/' + encodeURIComponent(syncConfig.code) + '/data.json';
+}
+
+// Debounced push — wait 2s after last save before pushing
+function syncPush() {
+  if (!syncConfig) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(doSyncPush, 2000);
+}
+
+async function doSyncPush() {
+  const url = getSyncUrl();
+  if (!url || syncBusy) return;
+  syncBusy = true;
+  updateSyncIcon('pushing');
+  try {
+    const payload = { ...DB, _lastSync: Date.now(), _device: getDeviceId() };
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    updateSyncIcon('ok');
+  } catch(e) {
+    console.error('Sync push error:', e);
+    updateSyncIcon('error');
+  }
+  syncBusy = false;
+}
+
+async function syncPull() {
+  const url = getSyncUrl();
+  if (!url || syncBusy) return;
+  syncBusy = true;
+  updateSyncIcon('pulling');
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (!data) { syncBusy = false; updateSyncIcon('ok'); return; }
+
+    // Merge remote data into local
+    let changed = false;
+
+    // Merge gardes
+    if (data.gardes) {
+      const localIds = new Set(DB.gardes.map(g => g.id));
+      data.gardes.forEach(g => {
+        if (!localIds.has(g.id)) { DB.gardes.push(g); changed = true; }
+      });
+    }
+
+    // Merge depEnfants
+    if (data.depEnfants) {
+      const localIds = new Set(DB.depEnfants.map(d => d.id));
+      data.depEnfants.forEach(d => {
+        if (!localIds.has(d.id)) { DB.depEnfants.push(d); changed = true; }
+      });
+    }
+
+    // Budget
+    if (data.budget) {
+      if (data.budget.salaire && data.budget.salaire !== DB.budget.salaire) {
+        DB.budget.salaire = data.budget.salaire; changed = true;
+      }
+      if (data.budget.charges) { DB.budget.charges = data.budget.charges; changed = true; }
+      if (data.budget.depenses) {
+        const localIds = new Set(DB.budget.depenses.map(d => d.id));
+        data.budget.depenses.forEach(d => {
+          if (!localIds.has(d.id)) { DB.budget.depenses.push(d); changed = true; }
+        });
+      }
+      if (data.budget.chargesValidees) {
+        if (!DB.budget.chargesValidees) DB.budget.chargesValidees = [];
+        const localCount = DB.budget.chargesValidees.length;
+        if (data.budget.chargesValidees.length > localCount) {
+          DB.budget.chargesValidees = data.budget.chargesValidees; changed = true;
+        }
+      }
+    }
+
+    if (changed) {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); } catch(e) {}
+      refreshCurrent();
+    }
+    updateSyncIcon('ok');
+  } catch(e) {
+    console.error('Sync pull error:', e);
+    updateSyncIcon('error');
+  }
+  syncBusy = false;
+}
+
+function syncNow() {
+  if (!syncConfig) {
+    openModal('modal-sync');
+    return;
+  }
+  toast('Synchronisation...');
+  syncPull().then(() => doSyncPush());
+}
+
+function getDeviceId() {
+  let id = localStorage.getItem('mesenfants_device_id');
+  if (!id) { id = uid(); localStorage.setItem('mesenfants_device_id', id); }
+  return id;
+}
+
+function updateSyncIcon(state) {
+  const btn = document.getElementById('sync-btn');
+  if (!btn) return;
+  if (state === 'pushing' || state === 'pulling') {
+    btn.textContent = '🔄';
+    btn.style.animation = 'spin 1s linear infinite';
+  } else if (state === 'ok') {
+    btn.textContent = '✅';
+    btn.style.animation = '';
+    setTimeout(() => { btn.textContent = '🔄'; }, 3000);
+  } else if (state === 'error') {
+    btn.textContent = '❌';
+    btn.style.animation = '';
+    setTimeout(() => { btn.textContent = '🔄'; }, 5000);
+  }
+}
+
+function saveSync() {
+  const url = document.getElementById('ms-url').value.trim();
+  const code = document.getElementById('ms-code').value.trim();
+  if (!url || !code) { toast('Remplissez les deux champs'); return; }
+  if (!url.startsWith('https://')) { toast('URL doit commencer par https://'); return; }
+  saveSyncConfig({ url, code });
+  closeModal('modal-sync');
+  toast('Sync activée ! Test en cours...');
+  // Test: push then pull
+  doSyncPush().then(() => {
+    syncPull().then(() => toast('Synchronisation OK !'));
+  });
+}
+
+function disableSync() {
+  syncConfig = null;
+  try { localStorage.removeItem(SYNC_KEY); } catch(e) {}
+  closeModal('modal-sync');
+  toast('Synchronisation désactivée');
+  document.getElementById('sync-btn').textContent = '🔄';
+}
+
+// On modal open, fill current config
+const origOpenModal = openModal;
+openModal = function(id) {
+  origOpenModal(id);
+  if (id === 'modal-sync' && syncConfig) {
+    document.getElementById('ms-url').value = syncConfig.url || '';
+    document.getElementById('ms-code').value = syncConfig.code || '';
+    document.getElementById('sync-status').textContent = 'Sync active — dernier push: ' + (syncConfig.url ? 'configuré' : 'non');
+  }
+};
+
+// Auto-pull on app start
+if (syncConfig) {
+  setTimeout(() => syncPull(), 1500);
+}
+// Auto-pull every 30 seconds
+setInterval(() => {
+  if (syncConfig && !document.hidden) syncPull();
+}, 30000);
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function toast(msg) {
@@ -1309,10 +1539,15 @@ function renderBudget() {
       const selMoi = (!d.pour || d.pour === 'moi') ? ' sel' : '';
       const selC = d.pour === 'chloe' ? ' sel-c' : '';
       const selT = d.pour === 'timo' ? ' sel-t' : '';
+      const isRemb = d.type === 'remb';
+      const amtColor = isRemb ? 'var(--success)' : 'var(--danger)';
+      const amtPrefix = isRemb ? '+' : '-';
+      const typeBadge = isRemb ? '<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;background:rgba(52,211,153,0.15);color:var(--success);margin-right:4px">REMB</span>' : '';
       return '<div class="budget-dep-line">' +
         '<div class="budget-dep-top">' +
+          typeBadge +
           '<span class="name">'+d.label+'</span>' +
-          '<span class="amt">-'+fmt(d.montant)+'</span>' +
+          '<span class="amt" style="color:'+amtColor+'">'+amtPrefix+fmt(d.montant)+'</span>' +
           '<button style="font-size:12px;color:var(--t3);margin-left:4px" onclick="openEditBdep('+i+')">\u270f\ufe0f</button>' +
           '<button style="font-size:12px;color:var(--t3);margin-left:2px" onclick="deleteBdep('+i+')">✕</button>' +
         '</div>' +
@@ -1325,21 +1560,28 @@ function renderBudget() {
     }).join('');
   }
 
-  // Totaux
+  // Totaux - remboursements subtract from totals
   let totMoi = 0, totC = 0, totT = 0;
   b.depenses.forEach(d => {
     const m = d.montant || 0;
-    if (d.pour === 'chloe') totC += m;
-    else if (d.pour === 'timo') totT += m;
-    else totMoi += m;
+    const signed = d.type === 'remb' ? -m : m;
+    if (d.pour === 'chloe') totC += signed;
+    else if (d.pour === 'timo') totT += signed;
+    else totMoi += signed;
   });
-  document.getElementById('bt-moi').textContent = fmt(totMoi);
-  document.getElementById('bt-chloe').textContent = fmt(totC);
-  document.getElementById('bt-timo').textContent = fmt(totT);
+  document.getElementById('bt-moi').textContent = (totMoi < 0 ? '+' : '') + fmt(Math.abs(totMoi));
+  document.getElementById('bt-moi').style.color = totMoi < 0 ? 'var(--success)' : 'var(--t1)';
+  document.getElementById('bt-chloe').textContent = (totC < 0 ? '+' : '') + fmt(Math.abs(totC));
+  document.getElementById('bt-chloe').style.color = totC < 0 ? 'var(--success)' : 'var(--chloe)';
+  document.getElementById('bt-timo').textContent = (totT < 0 ? '+' : '') + fmt(Math.abs(totT));
+  document.getElementById('bt-timo').style.color = totT < 0 ? 'var(--success)' : 'var(--timo)';
 
-  // RAV
+  // RAV - remboursements reduce total dep
   const totalChargesValidees = (b.chargesValidees || []).reduce((s, c) => s + c.montant, 0);
-  const totalDep = b.depenses.reduce((s, d) => s + (d.montant || 0), 0);
+  const totalDep = b.depenses.reduce((s, d) => {
+    const m = d.montant || 0;
+    return s + (d.type === 'remb' ? -m : m);
+  }, 0);
   const rav = b.salaire - totalChargesValidees - totalDep;
 
   document.getElementById('rav-amount').textContent = fmt(rav);
@@ -1388,6 +1630,28 @@ function validerCharges() {
   renderBudget();
 }
 
+let mbType = 'dep';
+function setMbType(t) {
+  mbType = t;
+  document.getElementById('mb-type-dep').className = 'btn btn-sm ' + (t==='dep' ? '' : 'btn-outline');
+  document.getElementById('mb-type-dep').style.background = t==='dep' ? 'var(--danger)' : '';
+  document.getElementById('mb-type-dep').style.color = t==='dep' ? '#fff' : '';
+  document.getElementById('mb-type-remb').className = 'btn btn-sm ' + (t==='remb' ? '' : 'btn-outline');
+  document.getElementById('mb-type-remb').style.background = t==='remb' ? 'var(--success)' : '';
+  document.getElementById('mb-type-remb').style.color = t==='remb' ? '#fff' : '';
+}
+
+let mebType = 'dep';
+function setMebType(t) {
+  mebType = t;
+  document.getElementById('meb-type-dep').className = 'btn btn-sm ' + (t==='dep' ? '' : 'btn-outline');
+  document.getElementById('meb-type-dep').style.background = t==='dep' ? 'var(--danger)' : '';
+  document.getElementById('meb-type-dep').style.color = t==='dep' ? '#fff' : '';
+  document.getElementById('meb-type-remb').className = 'btn btn-sm ' + (t==='remb' ? '' : 'btn-outline');
+  document.getElementById('meb-type-remb').style.background = t==='remb' ? 'var(--success)' : '';
+  document.getElementById('meb-type-remb').style.color = t==='remb' ? '#fff' : '';
+}
+
 function saveBdep() {
   const label = document.getElementById('mb-label').value.trim();
   const montant = parseFloat(document.getElementById('mb-montant').value) || 0;
@@ -1396,15 +1660,17 @@ function saveBdep() {
     id: uid(),
     label,
     montant,
+    type: mbType,
     date: document.getElementById('mb-date').value || today(),
     cat: document.getElementById('mb-cat').value,
     pour: 'moi'
   });
   save();
   closeModal('modal-bdep');
-  toast('Dépense ajoutée');
+  toast(mbType === 'remb' ? 'Remboursement ajouté' : 'Dépense ajoutée');
   document.getElementById('mb-label').value = '';
   document.getElementById('mb-montant').value = '';
+  mbType = 'dep'; setMbType('dep');
   renderBudget();
 }
 
@@ -1455,6 +1721,8 @@ function openEditBdep(i) {
   document.getElementById('meb-montant').value = d.montant;
   document.getElementById('meb-date').value = d.date;
   document.getElementById('meb-cat').value = d.cat || 'Autre';
+  mebType = d.type || 'dep';
+  setMebType(mebType);
   openModal('modal-editbdep');
 }
 
@@ -1465,6 +1733,7 @@ function saveEditBdep() {
   d.montant = parseFloat(document.getElementById('meb-montant').value) || 0;
   d.date = document.getElementById('meb-date').value;
   d.cat = document.getElementById('meb-cat').value;
+  d.type = mebType;
 
   // Update enfant entry if exists
   const enfEntry = DB.depEnfants.find(e => e.budgetId === d.id);

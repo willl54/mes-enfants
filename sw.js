@@ -1,4 +1,4 @@
-const CACHE = 'mesenfants-v3';
+const CACHE = 'mesenfants-v5';
 const ASSETS = ['./index.html'];
 
 self.addEventListener('install', e => {
