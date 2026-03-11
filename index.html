@@ -1331,26 +1331,43 @@ function calDayClick(dateStr) {
 
 // ===== BILAN =====
 function renderBilan() {
-  // Garde percentages
   const gardeEl = document.getElementById('bilan-garde');
-  let html = '<div class="card-title">\u2696\ufe0f Répartition des gardes</div>';
+  let html = '<div class="card-title">\u2696\ufe0f Répartition des jours de garde</div>';
 
   ['chloe','timo'].forEach(child => {
     const gs = DB.gardes.filter(g => g.child === child);
-    let papa = 0, maman = 0;
+    // Count DAYS: a day counts for Papa if at least one meal (midi or soir) is Papa
+    const dayMap = {};
     gs.forEach(g => {
-      if (g.midi === 'Papa') papa++;
-      if (g.midi === 'Maman') maman++;
-      if (g.soir === 'Papa') papa++;
-      if (g.soir === 'Maman') maman++;
+      if (!dayMap[g.date]) dayMap[g.date] = { papa: false, maman: false };
+      if (g.midi === 'Papa' || g.soir === 'Papa') dayMap[g.date].papa = true;
+      if (g.midi === 'Maman' || g.soir === 'Maman') dayMap[g.date].maman = true;
     });
-    const total = papa + maman;
-    const pct = total > 0 ? Math.round(papa / total * 100) : 0;
+    let joursPapa = 0, joursMaman = 0;
+    Object.values(dayMap).forEach(d => {
+      if (d.papa) joursPapa++;
+      if (d.maman && !d.papa) joursMaman++;
+    });
+    const totalJours = joursPapa + joursMaman;
+    const pctJours = totalJours > 0 ? Math.round(joursPapa / totalJours * 100) : 0;
     const color = child === 'chloe' ? 'var(--chloe)' : 'var(--timo)';
     const name = child === 'chloe' ? 'Chloé' : 'Timothé';
 
     const circumference = 2 * Math.PI * 34;
-    const offset = circumference - (pct / 100) * circumference;
+    const offset = circumference - (pctJours / 100) * circumference;
+
+    // Count meals for this child
+    let midiP=0, soirP=0, midiM=0, soirM=0;
+    gs.forEach(g => {
+      if (g.midi === 'Papa') midiP++;
+      if (g.midi === 'Maman') midiM++;
+      if (g.soir === 'Papa') soirP++;
+      if (g.soir === 'Maman') soirM++;
+    });
+    const midiTotal = midiP + midiM;
+    const soirTotal = soirP + soirM;
+    const midiPct = midiTotal > 0 ? Math.round(midiP/midiTotal*100) : 0;
+    const soirPct = soirTotal > 0 ? Math.round(soirP/soirTotal*100) : 0;
 
     html += '<div class="stat-ring">' +
       '<svg viewBox="0 0 80 80">' +
@@ -1358,14 +1375,18 @@ function renderBilan() {
         '<circle cx="40" cy="40" r="34" fill="none" stroke="'+color+'" stroke-width="8" ' +
           'stroke-dasharray="'+circumference+'" stroke-dashoffset="'+offset+'" ' +
           'stroke-linecap="round" transform="rotate(-90 40 40)"/>' +
-        '<text x="40" y="44" text-anchor="middle" fill="'+color+'" font-size="16" font-weight="700">'+pct+'%</text>' +
+        '<text x="40" y="44" text-anchor="middle" fill="'+color+'" font-size="16" font-weight="700">'+pctJours+'%</text>' +
       '</svg>' +
       '<div class="info">' +
         '<div style="font-size:15px;font-weight:700;color:'+color+'">'+name+'</div>' +
-        '<div class="stat-row"><span><span class="stat-dot" style="background:var(--papa)"></span>Papa</span><span style="font-weight:600">'+papa+' repas ('+pct+'%)</span></div>' +
-        '<div class="stat-bar"><div class="stat-bar-fill" style="width:'+pct+'%;background:var(--papa)"></div></div>' +
-        '<div class="stat-row"><span><span class="stat-dot" style="background:var(--maman)"></span>Maman</span><span style="font-weight:600">'+(total-papa)+' repas ('+(total>0?100-pct:0)+'%)</span></div>' +
-        '<div class="stat-bar"><div class="stat-bar-fill" style="width:'+(total>0?100-pct:0)+'%;background:var(--maman)"></div></div>' +
+        '<div class="stat-row"><span><span class="stat-dot" style="background:var(--papa)"></span>Papa</span><span style="font-weight:600">'+joursPapa+' jours ('+pctJours+'%)</span></div>' +
+        '<div class="stat-bar"><div class="stat-bar-fill" style="width:'+pctJours+'%;background:var(--papa)"></div></div>' +
+        '<div class="stat-row"><span><span class="stat-dot" style="background:var(--maman)"></span>Maman</span><span style="font-weight:600">'+joursMaman+' jours ('+(totalJours>0?100-pctJours:0)+'%)</span></div>' +
+        '<div class="stat-bar"><div class="stat-bar-fill" style="width:'+(totalJours>0?100-pctJours:0)+'%;background:var(--maman)"></div></div>' +
+        '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">' +
+          '<div class="stat-row"><span>☀️ Repas midi Papa</span><span style="font-weight:600;color:var(--papa)">'+midiPct+'% <span style="color:var(--t3);font-size:11px">('+midiP+'/'+midiTotal+')</span></span></div>' +
+          '<div class="stat-row"><span>🌙 Repas soir Papa</span><span style="font-weight:600;color:var(--papa)">'+soirPct+'% <span style="color:var(--t3);font-size:11px">('+soirP+'/'+soirTotal+')</span></span></div>' +
+        '</div>' +
       '</div>' +
     '</div>';
   });
@@ -2053,6 +2074,13 @@ async function importExcel(event) {
 
     save();
     toast(imported + ' gardes importées');
+    // Navigate calendar to most recent imported month
+    if (imported > 0 && DB.gardes.length > 0) {
+      const dates = DB.gardes.map(g => g.date).sort();
+      const latest = new Date(dates[dates.length - 1]);
+      calYear = latest.getFullYear();
+      calMonth = latest.getMonth();
+    }
     refreshCurrent();
   } catch(e) {
     toast('Erreur: ' + e.message);
