@@ -1503,32 +1503,96 @@ async function importPdf(event) {
 
     const buf = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-    let text = '';
+
+    // Extract text with Y positions to reconstruct real lines
+    let allLines = [];
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
       const content = await page.getTextContent();
-      text += content.items.map(it => it.str).join(' ') + '\n';
+      // Group items by Y position (rounded to 2px tolerance)
+      const rows = {};
+      content.items.forEach(it => {
+        if (!it.str.trim()) return;
+        const y = Math.round(it.transform[5] / 2) * 2; // round Y to 2px
+        if (!rows[y]) rows[y] = [];
+        rows[y].push({ x: it.transform[4], text: it.str });
+      });
+      // Sort by Y descending (PDF Y is bottom-up), then X ascending within each row
+      const sortedYs = Object.keys(rows).map(Number).sort((a,b) => b - a);
+      sortedYs.forEach(y => {
+        const items = rows[y].sort((a,b) => a.x - b.x);
+        allLines.push(items.map(it => it.text).join(' '));
+      });
     }
 
-    // Parse operations
-    const lines = text.split('\n');
+    // Parse operations - try multiple strategies
     const ops = [];
-    const dateRe = /(\d{2})[\/\.](\d{2})[\/\.](\d{2,4})/;
-    const amtRe = /(\d[\d\s]*[\d])[,.](\d{2})/;
+    const dateRe = /(\d{2})[\/\.\-](\d{2})(?:[\/\.\-](\d{2,4}))?/;
+    const amtRe = /(\d[\d\s]*\d?)[,.](\d{2})\s*(?:€|EUR)?/;
+    const amtReSingle = /(\d)[,.](\d{2})\s*(?:€|EUR)?/;
+    const currentYear = new Date().getFullYear();
 
-    lines.forEach(line => {
+    // Strategy 1: date + amount on same line
+    allLines.forEach(line => {
       const dm = line.match(dateRe);
-      const am = line.match(amtRe);
+      // Try both amount regexes (multi-digit and single-digit)
+      let am = line.match(amtRe);
+      if (!am) am = line.match(amtReSingle);
       if (dm && am) {
-        const year = dm[3].length === 2 ? '20'+dm[3] : dm[3];
-        const date = year+'-'+dm[2]+'-'+dm[1];
-        const montant = parseFloat(am[1].replace(/\s/g,'') + '.' + am[2]);
-        const label = line.replace(dateRe,'').replace(amtRe,'').replace(/[€$]/g,'').trim().slice(0,60) || 'Opération';
-        if (montant > 0) {
-          ops.push({ date, label, montant, cat: guessCat(label), pour: 'moi', checked: true });
-        }
+        const year = dm[3] ? (dm[3].length === 2 ? '20'+dm[3] : dm[3]) : String(currentYear);
+        const date = year+'-'+dm[2].padStart(2,'0')+'-'+dm[1].padStart(2,'0');
+        // Validate date
+        const testDate = new Date(date);
+        if (isNaN(testDate.getTime())) return;
+        const montant = parseFloat((am[1]||'0').replace(/\s/g,'') + '.' + am[2]);
+        if (montant <= 0 || montant > 99999) return;
+        // Build label: remove date and amount from line
+        let label = line;
+        label = label.replace(dm[0], '');
+        label = label.replace(am[0], '');
+        label = label.replace(/[€$EUR]/g,'').replace(/\s+/g,' ').trim();
+        // Skip header-like lines
+        if (/solde|total|report|date|libelle|debit|credit|montant/i.test(label) && label.length < 20) return;
+        if (!label || label.length < 2) label = 'Operation';
+        label = label.slice(0, 80);
+        ops.push({ date, label, montant, cat: guessCat(label), pour: 'moi', checked: true });
       }
     });
+
+    // Strategy 2: if few results, try date on one line + amount on next/prev line
+    if (ops.length < 5) {
+      for (let i = 0; i < allLines.length; i++) {
+        const line = allLines[i];
+        const dm = line.match(dateRe);
+        if (!dm) continue;
+        // Look at next 2 lines for an amount
+        for (let j = 1; j <= 2 && i+j < allLines.length; j++) {
+          const nextLine = allLines[i+j];
+          let am = nextLine.match(amtRe);
+          if (!am) am = nextLine.match(amtReSingle);
+          if (am) {
+            const year = dm[3] ? (dm[3].length === 2 ? '20'+dm[3] : dm[3]) : String(currentYear);
+            const date = year+'-'+dm[2].padStart(2,'0')+'-'+dm[1].padStart(2,'0');
+            const testDate = new Date(date);
+            if (isNaN(testDate.getTime())) break;
+            const montant = parseFloat((am[1]||'0').replace(/\s/g,'') + '.' + am[2]);
+            if (montant <= 0 || montant > 99999) break;
+            // Label from the line with the date or between
+            let label = line.replace(dm[0],'').replace(/[€$EUR]/g,'').trim();
+            if (j === 2 && allLines[i+1]) label = allLines[i+1].trim();
+            if (!label || label.length < 2) label = 'Operation';
+            if (/solde|total|report|date|libelle|debit|credit|montant/i.test(label) && label.length < 20) break;
+            label = label.slice(0, 80);
+            // Check not already found
+            const dup = ops.find(o => o.date === date && Math.abs(o.montant - montant) < 0.01);
+            if (!dup) {
+              ops.push({ date, label, montant, cat: guessCat(label), pour: 'moi', checked: true });
+            }
+            break;
+          }
+        }
+      }
+    }
 
     if (!ops.length) { toast('Aucune opération trouvée'); return; }
 
